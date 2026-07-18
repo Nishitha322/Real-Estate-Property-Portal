@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Properties — EstateHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="navbar" id="navbar"></header>
+
+  <section class="section-tight" style="background:var(--neutral-100)">
+    <div class="container">
+      <h1 style="font-size:2rem;margin-bottom:.25rem">Browse Properties</h1>
+      <p class="text-muted">Find your perfect home with advanced filters.</p>
+      <form class="search-card" id="filterForm" style="margin-top:1.5rem;grid-template-columns:1fr 1fr 1fr 1fr 1fr auto">
+        <div class="search-field">
+          <label>Search</label>
+          <input type="text" name="q" placeholder="Title or location">
+        </div>
+        <div class="search-field">
+          <label>Type</label>
+          <select name="type">
+            <option value="">Any</option>
+            <option>Apartment</option><option>Villa</option>
+            <option>Independent House</option><option>Commercial</option><option>Plot</option>
+          </select>
+        </div>
+        <div class="search-field">
+          <label>Location</label>
+          <input type="text" name="location" placeholder="City">
+        </div>
+        <div class="search-field">
+          <label>Min Price</label>
+          <select name="min_price">
+            <option value="">Any</option>
+            <option value="1000000">₹10 L+</option>
+            <option value="5000000">₹50 L+</option>
+            <option value="10000000">₹1 Cr+</option>
+          </select>
+        </div>
+        <div class="search-field">
+          <label>Max Price</label>
+          <select name="max_price">
+            <option value="">Any</option>
+            <option value="5000000">₹50 L</option>
+            <option value="10000000">₹1 Cr</option>
+            <option value="20000000">₹2 Cr</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Filter</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="container">
+      <div id="compareView" class="hidden mb-4">
+        <h2 class="mb-2">Compare Properties</h2>
+        <div class="table-wrap" id="compareTable"></div>
+      </div>
+      <div class="section-head">
+        <div>
+          <div class="eyebrow" id="resultCount">Loading…</div>
+          <h2>Available Listings</h2>
+        </div>
+        <div class="flex gap-1">
+          <button class="btn btn-secondary btn-sm" id="favOnlyBtn">♥ Favorites</button>
+        </div>
+      </div>
+      <div class="grid grid-3" id="propertyGrid">
+        <div class="spinner"></div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer" id="footer"></footer>
+  <script src="script.js"></script>
+  <script>
+    let allProperties = [];
+    let favOnly = false;
+
+    function currentQuery() {
+      const params = new URLSearchParams(location.search);
+      return {
+        q: params.get("q") || "",
+        type: params.get("type") || "",
+        location: params.get("location") || "",
+        min_price: params.get("min_price") || "",
+        max_price: params.get("max_price") || "",
+        status: params.get("status") || "",
+      };
+    }
+
+    function fillForm() {
+      const q = currentQuery();
+      const form = document.getElementById("filterForm");
+      ["q","type","location","min_price","max_price"].forEach((k) => {
+        if (q[k]) form.elements[k].value = q[k];
+      });
+    }
+
+    async function loadProperties() {
+      const grid = document.getElementById("propertyGrid");
+      try {
+        const q = currentQuery();
+        allProperties = await api.get("/properties/", q);
+        renderGrid();
+        if (location.search.includes("compare=1")) renderCompare();
+      } catch (err) {
+        grid.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${ui.escape(err.message)}</p></div>`;
+      }
+    }
+
+    function renderGrid() {
+      const grid = document.getElementById("propertyGrid");
+      let list = allProperties;
+      if (favOnly) list = list.filter((p) => favorites.isFav(p.property_id));
+      document.getElementById("resultCount").textContent =
+        `${list.length} ${list.length === 1 ? "property" : "properties"} found`;
+      if (list.length === 0) {
+        grid.innerHTML = '<div class="empty-state"><div class="icon">🏠</div><p>No properties match your filters.</p></div>';
+        return;
+      }
+      grid.innerHTML = list.map(propertyCard).join("");
+      grid.querySelectorAll("[data-fav]").forEach((btn) => {
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          const id = Number(btn.dataset.fav);
+          const active = favorites.toggle(id);
+          btn.classList.toggle("active", active);
+          btn.textContent = active ? "♥" : "♡";
+          ui.toast(active ? "Added to wishlist" : "Removed from wishlist");
+          if (favOnly) renderGrid();
+        });
+      });
+    }
+
+    async function renderCompare() {
+      const ids = compare.all();
+      if (ids.length === 0) return;
+      document.getElementById("compareView").classList.remove("hidden");
+      const props = await Promise.all(ids.map((id) => api.get(`/properties/${id}/`)));
+      const keys = ["property_title","property_type","location","price","bedrooms","bathrooms","area_sqft","status"];
+      const labels = { property_title:"Title", property_type:"Type", location:"Location", price:"Price", bedrooms:"Beds", bathrooms:"Baths", area_sqft:"Area", status:"Status" };
+      let html = '<table><thead><tr><th>Attribute</th>';
+      props.forEach((p) => { html += `<th>${ui.escape(p.property_title)}</th>`; });
+      html += '</tr></thead><tbody>';
+      keys.forEach((k) => {
+        html += `<tr><td><strong>${labels[k]}</strong></td>`;
+        props.forEach((p) => {
+          let val = p[k];
+          if (k === "price") val = ui.money(val);
+          if (k === "area_sqft") val += " sqft";
+          if (k === "status") val = ui.chip(val);
+          html += `<td>${val}</td>`;
+        });
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      document.getElementById("compareTable").innerHTML = html;
+    }
+
+    document.getElementById("filterForm").addEventListener("submit", (e) => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const params = new URLSearchParams();
+      for (const [k, v] of fd.entries()) if (v) params.set(k, v);
+      location.href = "properties.html?" + params.toString();
+    });
+
+    document.getElementById("favOnlyBtn").addEventListener("click", () => {
+      favOnly = !favOnly;
+      document.getElementById("favOnlyBtn").classList.toggle("btn-primary", favOnly);
+      document.getElementById("favOnlyBtn").classList.toggle("btn-secondary", !favOnly);
+      renderGrid();
+    });
+
+    fillForm();
+    loadProperties();
+  </script>
+</body>
+</html>

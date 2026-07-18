@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard — EstateHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="navbar" id="navbar"></header>
+
+  <section class="section">
+    <div class="container">
+      <div id="guard"></div>
+      <div id="adminRoot" class="hidden">
+        <div class="section-head mb-4">
+          <div>
+            <h1>Admin Dashboard</h1>
+            <p class="text-muted">Manage customers, properties, agents, bookings, and inquiries.</p>
+          </div>
+          <button class="btn btn-primary btn-sm" id="addBtn">+ Add New</button>
+        </div>
+
+        <div class="stat-grid mb-4" id="stats"></div>
+
+        <div class="dash-layout">
+          <aside class="dash-sidebar" id="moduleNav">
+            <a data-module="properties" class="active">🏠 Properties</a>
+            <a data-module="customers">👥 Customers</a>
+            <a data-module="agents">🤝 Agents</a>
+            <a data-module="bookings">📅 Bookings</a>
+            <a data-module="inquiries">✉️ Inquiries</a>
+          </aside>
+          <main class="dash-main">
+            <div class="table-wrap" id="dataTable"></div>
+          </main>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div id="modalRoot"></div>
+
+  <footer class="footer" id="footer"></footer>
+  <script src="script.js"></script>
+  <script>
+    const user = auth.current();
+    let currentModule = "properties";
+    let cache = { properties: [], customers: [], agents: [], bookings: [], inquiries: [] };
+
+    const SCHEMA = {
+      properties: { idField: "property_id", fields: [
+        { name: "property_title", label: "Title", type: "text" },
+        { name: "property_type", label: "Type", type: "select", options: ["Apartment","Villa","Independent House","Commercial","Plot"] },
+        { name: "location", label: "Location", type: "text" },
+        { name: "price", label: "Price", type: "number" },
+        { name: "bedrooms", label: "Bedrooms", type: "number" },
+        { name: "bathrooms", label: "Bathrooms", type: "number" },
+        { name: "area_sqft", label: "Area (sqft)", type: "number" },
+        { name: "status", label: "Status", type: "select", options: ["Available","Sold","Rented"] },
+        { name: "image_url", label: "Image URL", type: "text" },
+      ]},
+      customers: { idField: "customer_id", fields: [
+        { name: "full_name", label: "Full Name", type: "text" },
+        { name: "email", label: "Email", type: "email" },
+        { name: "phone", label: "Phone", type: "text" },
+        { name: "city", label: "City", type: "text" },
+        { name: "password", label: "Password", type: "text" },
+      ]},
+      agents: { idField: "agent_id", fields: [
+        { name: "agent_name", label: "Agent Name", type: "text" },
+        { name: "phone", label: "Phone", type: "text" },
+        { name: "email", label: "Email", type: "email" },
+        { name: "experience", label: "Experience (yrs)", type: "number" },
+        { name: "specialization", label: "Specialization", type: "text" },
+      ]},
+      bookings: { idField: "booking_id", fields: [
+        { name: "customer_name", label: "Customer", type: "text" },
+        { name: "property_title", label: "Property", type: "text" },
+        { name: "visit_date", label: "Visit Date", type: "date" },
+        { name: "visit_time", label: "Visit Time", type: "time" },
+        { name: "agent_name", label: "Agent", type: "text" },
+        { name: "booking_status", label: "Status", type: "select", options: ["Scheduled","Completed","Cancelled"] },
+      ]},
+      inquiries: { idField: "inquiry_id", fields: [
+        { name: "customer_name", label: "Customer", type: "text" },
+        { name: "property_title", label: "Property", type: "text" },
+        { name: "message", label: "Message", type: "textarea" },
+        { name: "inquiry_date", label: "Date", type: "date" },
+        { name: "response_status", label: "Status", type: "select", options: ["Pending","Responded","Closed"] },
+      ]},
+    };
+
+    function guard() {
+      if (!user || !auth.isAdmin()) {
+        document.getElementById("guard").innerHTML = `
+          <div class="empty-state" style="margin-top:3rem">
+            <div class="icon">🔒</div>
+            <h2>Admin access required</h2>
+            <p class="text-muted">Login as admin@realestate.com / admin123</p>
+            <a href="login.html" class="btn btn-primary mt-2">Login</a>
+          </div>`;
+        return false;
+      }
+      document.getElementById("guard").classList.add("hidden");
+      document.getElementById("adminRoot").classList.remove("hidden");
+      return true;
+    }
+
+    async function loadAll() {
+      const [properties, customers, agents, bookings, inquiries] = await Promise.all([
+        api.get("/properties/"), api.get("/customers/"), api.get("/agents/"),
+        api.get("/bookings/"), api.get("/inquiries/"),
+      ]);
+      cache = { properties, customers, agents, bookings, inquiries };
+      renderStats();
+      renderTable();
+    }
+
+    function renderStats() {
+      const c = cache;
+      document.getElementById("stats").innerHTML = `
+        <div class="stat-card"><div class="stat-icon" style="background:var(--primary-50);color:var(--primary-600)">🏠</div><div class="stat-value">${c.properties.length}</div><div class="stat-label">Properties</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--accent-500);color:white">👥</div><div class="stat-value">${c.customers.length}</div><div class="stat-label">Customers</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--warning-50);color:var(--warning-600)">🤝</div><div class="stat-value">${c.agents.length}</div><div class="stat-label">Agents</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--success-50);color:var(--success-600)">📅</div><div class="stat-value">${c.bookings.length}</div><div class="stat-label">Bookings</div></div>
+      `;
+    }
+
+    function renderTable() {
+      const schema = SCHEMA[currentModule];
+      const rows = cache[currentModule];
+      const el = document.getElementById("dataTable");
+      if (rows.length === 0) { el.innerHTML = '<p class="text-muted" style="padding:1rem">No records.</p>'; return; }
+      const cols = schema.fields.slice(0, 5);
+      let html = '<table><thead><tr>';
+      html += `<th>ID</th>`;
+      cols.forEach((f) => { html += `<th>${f.label}</th>`; });
+      html += '<th>Actions</th></tr></thead><tbody>';
+      rows.forEach((row) => {
+        html += `<tr><td>${row[schema.idField]}</td>`;
+        cols.forEach((f) => {
+          let v = row[f.name];
+          if (f.name === "price") v = ui.money(v);
+          if (f.name === "status" || f.name === "booking_status" || f.name === "response_status") v = ui.chip(v);
+          html += `<td>${ui.escape(String(v ?? ""))}</td>`;
+        });
+        html += `<td><div class="row-actions">
+          <button class="btn btn-secondary btn-sm" onclick="openEdit('${currentModule}',${row[schema.idField]})">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="del('${currentModule}',${row[schema.idField]})">Delete</button>
+        </div></td></tr>`;
+      });
+      html += '</tbody></table>';
+      el.innerHTML = html;
+    }
+
+    document.getElementById("moduleNav").addEventListener("click", (e) => {
+      const a = e.target.closest("[data-module]");
+      if (!a) return;
+      e.preventDefault();
+      currentModule = a.dataset.module;
+      document.querySelectorAll("#moduleNav a").forEach((x) => x.classList.remove("active"));
+      a.classList.add("active");
+      renderTable();
+    });
+
+    document.getElementById("addBtn").addEventListener("click", () => openEdit(currentModule, null));
+
+    function openEdit(module, id) {
+      const schema = SCHEMA[module];
+      const row = id != null ? cache[module].find((r) => r[schema.idField] === id) : {};
+      const fieldsHtml = schema.fields.map((f) => {
+        const val = row[f.name] ?? "";
+        if (f.type === "select") {
+          return `<div class="form-group"><label>${f.label}</label><select class="form-control" name="${f.name}">${f.options.map((o)=>`<option ${o===val?"selected":""}>${o}</option>`).join("")}</select></div>`;
+        }
+        if (f.type === "textarea") {
+          return `<div class="form-group"><label>${f.label}</label><textarea class="form-control" name="${f.name}">${ui.escape(val)}</textarea></div>`;
+        }
+        return `<div class="form-group"><label>${f.label}</label><input type="${f.type}" class="form-control" name="${f.name}" value="${ui.escape(val)}"></div>`;
+      }).join("");
+      document.getElementById("modalRoot").innerHTML = `
+        <div class="modal-overlay" onclick="if(event.target===this)closeModal()">
+          <div class="modal">
+            <div class="modal-head"><h3>${id != null ? "Edit" : "Add"} ${module.slice(0,-1)}</h3><button class="modal-close" onclick="closeModal()">&times;</button></div>
+            <form id="modalForm"><div class="modal-body">${fieldsHtml}</div>
+            <div class="modal-foot"><button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div></form>
+          </div>
+        </div>`;
+      document.getElementById("modalForm").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const data = {};
+        fd.forEach((v, k) => {
+          const f = schema.fields.find((x) => x.name === k);
+          data[k] = f && f.type === "number" ? Number(v) : v;
+        });
+        try {
+          if (id != null) await api.put(`/${module}/update/${id}/`, data);
+          else await api.post(`/${module}/add/`, data);
+          ui.toast("Saved successfully");
+          closeModal();
+          loadAll();
+        } catch (err) { ui.toast(err.message, "error"); }
+      });
+    }
+
+    window.closeModal = () => { document.getElementById("modalRoot").innerHTML = ""; };
+    window.openEdit = openEdit;
+    window.del = async (module, id) => {
+      if (!confirm("Delete this record?")) return;
+      try { await api.del(`/${module}/delete/${id}/`); ui.toast("Deleted"); loadAll(); }
+      catch (err) { ui.toast(err.message, "error"); }
+    };
+
+    if (guard()) loadAll();
+  </script>
+</body>
+</html>

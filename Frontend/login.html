@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — EstateHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="navbar" id="navbar"></header>
+
+  <div class="auth-wrap">
+    <aside class="auth-aside">
+      <h2>Welcome back</h2>
+      <p>Log in to manage your saved properties, bookings, and inquiries.</p>
+      <p style="margin-top:1rem;font-size:.85rem;opacity:.85">Admin demo: admin@realestate.com / admin123</p>
+    </aside>
+    <main class="auth-main">
+      <div class="form-card">
+        <h2 style="margin-bottom:.25rem">Sign in</h2>
+        <p class="text-muted mb-3">Enter your credentials to access your account.</p>
+        <div id="alertBox"></div>
+        <form id="loginForm">
+          <div class="form-group">
+            <label for="email">Email</label>
+            <input type="email" id="email" class="form-control" placeholder="you@example.com" required>
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" class="form-control" placeholder="••••••••" required>
+          </div>
+          <button type="submit" class="btn btn-primary btn-block">Login</button>
+        </form>
+        <p class="text-center text-muted text-sm mt-3">
+          New here? <a href="register.html">Create an account</a>
+        </p>
+      </div>
+    </main>
+  </div>
+
+  <script src="script.js"></script>
+  <script>
+    document.getElementById("loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const email = document.getElementById("email").value.trim();
+      const password = document.getElementById("password").value;
+      const box = document.getElementById("alertBox");
+      try {
+        const user = await auth.login(email, password);
+        ui.toast("Welcome, " + user.full_name.split(" ")[0]);
+        setTimeout(() => location.href = auth.isAdmin() ? "admin_dashboard.html" : "customer_dashboard.html", 500);
+      } catch (err) {
+        box.innerHTML = `<div class="alert alert-error">${ui.escape(err.message)}</div>`;
+      }
+    });
+  </script>
+</body>
+</html>

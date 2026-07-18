@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Property Details — EstateHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="navbar" id="navbar"></header>
+
+  <section class="section">
+    <div class="container" id="detailRoot">
+      <div class="spinner"></div>
+    </div>
+  </section>
+
+  <footer class="footer" id="footer"></footer>
+  <script src="script.js"></script>
+  <script>
+    const propertyId = ui.qs("id");
+    let property = null;
+    let agents = [];
+
+    async function load() {
+      const root = document.getElementById("detailRoot");
+      try {
+        property = await api.get(`/properties/${propertyId}/`);
+        agents = await api.get("/agents/");
+        render();
+      } catch (err) {
+        root.innerHTML = `<div class="empty-state"><div class="icon">⚠️</div><p>${ui.escape(err.message)}</p></div>`;
+      }
+    }
+
+    function render() {
+      const p = property;
+      const agent = agents.find((a) => a.specialization?.toLowerCase().includes("residential")) || agents[0];
+      const fav = favorites.isFav(p.property_id);
+      const inCompare = compare.all().includes(p.property_id);
+      const galleryImgs = [
+        p.image_url,
+        "https://images.pexels.com/photos/1571460/pexels-photo-1571460.jpeg",
+        "https://images.pexels.com/photos/1648776/pexels-photo-1648776.jpeg",
+        "https://images.pexels.com/photos/276724/pexels-photo-276724.jpeg",
+        "https://images.pexels.com/photos/1080723/pexels-photo-1080723.jpeg",
+      ].filter(Boolean);
+      document.getElementById("detailRoot").innerHTML = `
+        <a href="properties.html" class="text-sm" style="display:inline-block;margin-bottom:1rem">← Back to listings</a>
+        <div class="detail-gallery mb-4">
+          <img class="main" src="${ui.escape(galleryImgs[0])}" alt="${ui.escape(p.property_title)}">
+          ${galleryImgs.slice(1,5).map((src) => `<img src="${ui.escape(src)}" alt="">`).join("")}
+        </div>
+        <div class="detail-grid">
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <div>
+                <span class="property-type">${ui.escape(p.property_type)}</span>
+                <h1 style="margin:.25rem 0">${ui.escape(p.property_title)}</h1>
+                <div class="property-location text-lg">📍 ${ui.escape(p.location)}</div>
+              </div>
+              <div class="text-right">
+                <div class="property-price" style="font-size:1.75rem">${ui.money(p.price)}</div>
+                ${ui.chip(p.status)}
+              </div>
+            </div>
+            <div class="grid grid-4 mb-4">
+              <div class="stat-card"><div class="stat-value">${p.bedrooms || "—"}</div><div class="stat-label">Bedrooms</div></div>
+              <div class="stat-card"><div class="stat-value">${p.bathrooms || "—"}</div><div class="stat-label">Bathrooms</div></div>
+              <div class="stat-card"><div class="stat-value">${p.area_sqft}</div><div class="stat-label">Sqft</div></div>
+              <div class="stat-card"><div class="stat-value">${p.property_type}</div><div class="stat-label">Type</div></div>
+            </div>
+            <h3 class="mb-2">Description</h3>
+            <p class="text-muted mb-4">This ${ui.escape(p.property_type).toLowerCase()} in ${ui.escape(p.location)} offers ${p.bedrooms} bedrooms, ${p.bathrooms} bathrooms, and ${p.area_sqft} sqft of well-designed living space. Ideal for families and investors looking for a premium property in a prime location with excellent connectivity.</p>
+            <h3 class="mb-2">Features</h3>
+            <ul class="feature-list mb-4">
+              <li>✓ Spacious living & dining</li>
+              <li>✓ Modular kitchen</li>
+              <li>✓ Reserved parking</li>
+              <li>✓ 24/7 security</li>
+              <li>✓ Power backup</li>
+              <li>✓ Landscaped garden</li>
+              <li>✓ Children's play area</li>
+              <li>✓ Close to metro & schools</li>
+            </ul>
+            <h3 class="mb-2">Location on Map</h3>
+            <div class="map-embed mb-4">
+              <iframe src="https://www.google.com/maps?q=${encodeURIComponent(p.location)}&output=embed" loading="lazy"></iframe>
+            </div>
+          </div>
+          <aside>
+            <div class="flex gap-1 mb-3">
+              <button class="btn btn-secondary btn-block" id="favBtn">${fav ? "♥ Saved" : "♡ Save"}</button>
+              <button class="btn btn-secondary btn-block" id="compareBtn">${inCompare ? "✓ Comparing" : "⇄ Compare"}</button>
+            </div>
+            <div class="agent-card mb-3">
+              <h4 class="mb-2">Listed by Agent</h4>
+              ${agent ? `
+                <div class="agent-avatar">${ui.escape(agent.agent_name.split(" ").map((n)=>n[0]).join(""))}</div>
+                <div class="font-semibold">${ui.escape(agent.agent_name)}</div>
+                <div class="text-muted text-sm mb-2">${ui.escape(agent.specialization)}</div>
+                <div class="text-sm">📞 ${ui.escape(agent.phone)}</div>
+                <div class="text-sm">✉️ ${ui.escape(agent.email)}</div>
+                <div class="text-sm mt-2">Experience: ${agent.experience} years</div>
+              ` : '<p class="text-muted text-sm">No agent assigned.</p>'}
+            </div>
+            <button class="btn btn-primary btn-block mb-2" id="bookBtn">📅 Schedule Visit</button>
+            <button class="btn btn-outline-primary btn-block" id="inquiryBtn">✉️ Send Inquiry</button>
+          </aside>
+        </div>
+      `;
+      attachActions();
+    }
+
+    function attachActions() {
+      document.getElementById("favBtn").addEventListener("click", () => {
+        const active = favorites.toggle(property.property_id);
+        document.getElementById("favBtn").textContent = active ? "♥ Saved" : "♡ Save";
+        ui.toast(active ? "Added to wishlist" : "Removed from wishlist");
+        renderCompareBar();
+      });
+      document.getElementById("compareBtn").addEventListener("click", () => {
+        try {
+          const active = compare.toggle(property.property_id);
+          document.getElementById("compareBtn").textContent = active ? "✓ Comparing" : "⇄ Compare";
+          ui.toast(active ? "Added to compare" : "Removed from compare");
+          renderCompareBar();
+        } catch (err) { ui.toast(err.message, "error"); }
+      });
+      document.getElementById("bookBtn").addEventListener("click", () => {
+        const user = auth.current();
+        if (!user) { ui.toast("Please login to book a visit", "error"); setTimeout(()=>location.href="login.html",800); return; }
+        location.href = `bookings.html?property_id=${property.property_id}`;
+      });
+      document.getElementById("inquiryBtn").addEventListener("click", () => {
+        const user = auth.current();
+        if (!user) { ui.toast("Please login to send an inquiry", "error"); setTimeout(()=>location.href="login.html",800); return; }
+        location.href = `inquiries.html?property_id=${property.property_id}`;
+      });
+    }
+
+    load();
+  </script>
+</body>
+</html>

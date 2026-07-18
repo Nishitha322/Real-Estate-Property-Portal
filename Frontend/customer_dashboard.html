@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Dashboard — EstateHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="navbar" id="navbar"></header>
+
+  <section class="section">
+    <div class="container">
+      <div id="welcomeBox" class="mb-4"></div>
+      <div class="dash-layout">
+        <aside class="dash-sidebar">
+          <a href="#saved" class="active">♥ Saved Properties</a>
+          <a href="#bookings">📅 Visit Bookings</a>
+          <a href="#inquiries">✉️ Inquiry History</a>
+          <a href="#owned">🏠 Owned / Rented</a>
+          <a href="bookings.html">+ New Booking</a>
+          <a href="inquiries.html">+ New Inquiry</a>
+        </aside>
+        <main class="dash-main">
+          <div class="stat-grid mb-3" id="stats"></div>
+
+          <div id="saved" class="mb-4">
+            <div class="section-head"><h2>Saved Properties</h2></div>
+            <div class="grid grid-2" id="savedGrid"></div>
+          </div>
+
+          <div id="bookings" class="mb-4">
+            <div class="section-head"><h2>Visit Bookings</h2></div>
+            <div class="table-wrap" id="bookingsTable"></div>
+          </div>
+
+          <div id="inquiries" class="mb-4">
+            <div class="section-head"><h2>Inquiry History</h2></div>
+            <div class="table-wrap" id="inquiriesTable"></div>
+          </div>
+
+          <div id="owned" class="mb-4">
+            <div class="section-head"><h2>Purchased / Rented Properties</h2></div>
+            <div class="grid grid-2" id="ownedGrid"></div>
+          </div>
+        </main>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer" id="footer"></footer>
+  <script src="script.js"></script>
+  <script>
+    const user = auth.current();
+
+    async function loadDashboard() {
+      if (!user) {
+        document.querySelector(".container").innerHTML = `
+          <div class="empty-state" style="margin-top:3rem">
+            <div class="icon">🔒</div>
+            <h2>Please login to view your dashboard</h2>
+            <a href="login.html" class="btn btn-primary mt-2">Login</a>
+          </div>`;
+        return;
+      }
+      document.getElementById("welcomeBox").innerHTML = `
+        <h1>Hello, ${ui.escape(user.full_name.split(" ")[0])} 👋</h1>
+        <p class="text-muted">${ui.escape(user.email)} · ${ui.escape(user.city)}</p>
+      `;
+      try {
+        const [properties, bookings, inquiries] = await Promise.all([
+          api.get("/properties/"),
+          api.get("/bookings/", { customer: user.full_name }),
+          api.get("/inquiries/", { customer: user.full_name }),
+        ]);
+        renderStats(properties, bookings, inquiries);
+        renderSaved(properties);
+        renderBookings(bookings);
+        renderInquiries(inquiries);
+        renderOwned(properties);
+      } catch (err) {
+        ui.toast(err.message, "error");
+      }
+    }
+
+    function renderStats(properties, bookings, inquiries) {
+      const saved = favorites.all().length;
+      document.getElementById("stats").innerHTML = `
+        <div class="stat-card"><div class="stat-icon" style="background:var(--primary-50);color:var(--primary-600)">♥</div><div class="stat-value">${saved}</div><div class="stat-label">Saved</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--accent-500);color:white">📅</div><div class="stat-value">${bookings.length}</div><div class="stat-label">Bookings</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--warning-50);color:var(--warning-600)">✉️</div><div class="stat-value">${inquiries.length}</div><div class="stat-label">Inquiries</div></div>
+        <div class="stat-card"><div class="stat-icon" style="background:var(--success-50);color:var(--success-600)">🏠</div><div class="stat-value">${properties.filter((p)=>p.status!=="Available").length}</div><div class="stat-label">Owned/Rented</div></div>
+      `;
+    }
+
+    function renderSaved(properties) {
+      const savedIds = favorites.all();
+      const saved = properties.filter((p) => savedIds.includes(p.property_id));
+      const grid = document.getElementById("savedGrid");
+      if (saved.length === 0) {
+        grid.innerHTML = '<div class="empty-state"><p>No saved properties. Browse and tap ♥ on any listing.</p></div>';
+        return;
+      }
+      grid.innerHTML = saved.map(propertyCard).join("");
+    }
+
+    function renderBookings(bookings) {
+      const el = document.getElementById("bookingsTable");
+      if (bookings.length === 0) { el.innerHTML = '<p class="text-muted" style="padding:1rem">No bookings yet.</p>'; return; }
+      el.innerHTML = `
+        <table><thead><tr><th>Property</th><th>Date</th><th>Time</th><th>Agent</th><th>Status</th></tr></thead>
+        <tbody>${bookings.map((b)=>`<tr><td>${ui.escape(b.property_title)}</td><td>${b.visit_date}</td><td>${b.visit_time}</td><td>${ui.escape(b.agent_name||"—")}</td><td>${ui.chip(b.booking_status)}</td></tr>`).join("")}</tbody></table>
+      `;
+    }
+
+    function renderInquiries(inquiries) {
+      const el = document.getElementById("inquiriesTable");
+      if (inquiries.length === 0) { el.innerHTML = '<p class="text-muted" style="padding:1rem">No inquiries yet.</p>'; return; }
+      el.innerHTML = `
+        <table><thead><tr><th>Property</th><th>Message</th><th>Date</th><th>Status</th></tr></thead>
+        <tbody>${inquiries.map((i)=>`<tr><td>${ui.escape(i.property_title)}</td><td>${ui.escape(i.message)}</td><td>${i.inquiry_date}</td><td>${ui.chip(i.response_status)}</td></tr>`).join("")}</tbody></table>
+      `;
+    }
+
+    function renderOwned(properties) {
+      const owned = properties.filter((p) => p.status === "Sold" || p.status === "Rented");
+      const grid = document.getElementById("ownedGrid");
+      if (owned.length === 0) { grid.innerHTML = '<div class="empty-state"><p>No purchased or rented properties.</p></div>'; return; }
+      grid.innerHTML = owned.map(propertyCard).join("");
+    }
+
+    loadDashboard();
+  </script>
+</body>
+</html>

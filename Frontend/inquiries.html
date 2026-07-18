@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inquiries — EstateHub</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="navbar" id="navbar"></header>
+
+  <section class="section">
+    <div class="container">
+      <h1 style="margin-bottom:.25rem">Inquiry Management</h1>
+      <p class="text-muted mb-4">Send inquiries about properties and track responses.</p>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:2rem;align-items:start">
+        <div class="form-card">
+          <h3 class="mb-3">Send an Inquiry</h3>
+          <div id="alertBox"></div>
+          <form id="inquiryForm">
+            <div class="form-group">
+              <label for="customer_name">Customer Name</label>
+              <input type="text" id="customer_name" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="property_id">Property</label>
+              <select id="property_id" class="form-control" required></select>
+            </div>
+            <div class="form-group">
+              <label for="message">Message</label>
+              <textarea id="message" class="form-control" placeholder="Ask about pricing, loans, amenities…" required></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary btn-block">Submit Inquiry</button>
+          </form>
+        </div>
+        <div>
+          <h3 class="mb-3">Inquiry History</h3>
+          <div id="inquiryList"><div class="spinner"></div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer" id="footer"></footer>
+  <script src="script.js"></script>
+  <script>
+    let properties = [];
+    const user = auth.current();
+
+    async function load() {
+      try {
+        properties = await api.get("/properties/");
+        const sel = document.getElementById("property_id");
+        sel.innerHTML = properties.map((p) => `<option value="${p.property_id}">${ui.escape(p.property_title)}</option>`).join("");
+        if (user) document.getElementById("customer_name").value = user.full_name;
+        const pid = ui.qs("property_id");
+        if (pid) sel.value = pid;
+        loadInquiries();
+      } catch (err) {
+        document.getElementById("alertBox").innerHTML = `<div class="alert alert-error">${ui.escape(err.message)}</div>`;
+      }
+    }
+
+    document.getElementById("inquiryForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const box = document.getElementById("alertBox");
+      const property = properties.find((p) => p.property_id == document.getElementById("property_id").value);
+      try {
+        await api.post("/inquiries/add/", {
+          customer_name: document.getElementById("customer_name").value.trim(),
+          property_title: property.property_title,
+          message: document.getElementById("message").value.trim(),
+          response_status: "Pending",
+        });
+        ui.toast("Inquiry submitted");
+        e.target.reset();
+        if (user) document.getElementById("customer_name").value = user.full_name;
+        loadInquiries();
+      } catch (err) {
+        box.innerHTML = `<div class="alert alert-error">${ui.escape(err.message)}</div>`;
+      }
+    });
+
+    async function loadInquiries() {
+      const list = document.getElementById("inquiryList");
+      try {
+        const inquiries = await api.get("/inquiries/", user ? { customer: user.full_name } : {});
+        if (inquiries.length === 0) {
+          list.innerHTML = '<div class="empty-state"><div class="icon">✉️</div><p>No inquiries yet.</p></div>';
+          return;
+        }
+        list.innerHTML = inquiries.map((i) => `
+          <div class="stat-card mb-2">
+            <div class="flex items-center justify-between mb-1">
+              <strong>${ui.escape(i.property_title)}</strong>
+              ${ui.chip(i.response_status)}
+            </div>
+            <p class="text-sm mb-1">${ui.escape(i.message)}</p>
+            <div class="text-xs text-muted">Submitted: ${i.inquiry_date}</div>
+            <div class="row-actions mt-2">
+              <select class="form-control" style="width:auto;padding:.35rem .5rem" onchange="updateStatus(${i.inquiry_id}, this.value)">
+                <option value="">Update status…</option>
+                <option>Pending</option><option>Responded</option><option>Closed</option>
+              </select>
+              <button class="btn btn-danger btn-sm" onclick="removeInquiry(${i.inquiry_id})">Delete</button>
+            </div>
+          </div>
+        `).join("");
+        window.updateStatus = async (id, status) => {
+          if (!status) return;
+          try { await api.put(`/inquiries/update/${id}/`, { response_status: status }); ui.toast("Status updated"); loadInquiries(); }
+          catch (err) { ui.toast(err.message, "error"); }
+        };
+        window.removeInquiry = async (id) => {
+          try { await api.del(`/inquiries/delete/${id}/`); ui.toast("Inquiry deleted"); loadInquiries(); }
+          catch (err) { ui.toast(err.message, "error"); }
+        };
+      } catch (err) {
+        list.innerHTML = `<div class="empty-state"><p>${ui.escape(err.message)}</p></div>`;
+      }
+    }
+
+    load();
+  </script>
+</body>
+</html>
